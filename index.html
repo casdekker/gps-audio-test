@@ -84,11 +84,31 @@
         const volFill = document.getElementById('volFill');
         const posDisplay = document.getElementById('currentPos');
 
-        let watchId = null; // Bewaar ID om tracking te kunnen stoppen
+        let watchId = null;
+        let volumeInterval = null;
+        let targetVolume = 0;
 
-        //const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; //Fort Parkeerplaats
-        const TARGET = { lat: 52.141262975988894, lon: 5.973424812051327 }; 
+        const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; 
         const MAX_DIST = 50; 
+
+        // Deze functie zorgt dat het volume vloeiend verandert (fade)
+        function smoothVolume() {
+            const step = 0.05; // Snelheid van de fade
+            if (Math.abs(audio.volume - targetVolume) > step) {
+                if (audio.volume < targetVolume) {
+                    audio.volume = Math.min(1, audio.volume + step);
+                } else {
+                    audio.volume = Math.max(0, audio.volume - step);
+                }
+            } else {
+                audio.volume = targetVolume;
+            }
+            
+            // UI Update
+            const displayVol = Math.round(audio.volume * 100);
+            volPercent.innerText = `${displayVol}%`;
+            volFill.style.width = `${displayVol}%`;
+        }
 
         startBtn.addEventListener('click', () => {
             audio.play().then(() => {
@@ -100,39 +120,30 @@
                 stopBtn.style.display = 'block';
                 
                 statusDisplay.innerText = "GPS Zoeken...";
-                statusDisplay.style.color = "white";
+                
+                // Start de volume smoother (loopt elke 100ms)
+                volumeInterval = setInterval(smoothVolume, 100);
+                
                 initGPS();
-            }).catch(e => alert("Toestemming geweigerd of geen audiobestand gevonden."));
+            }).catch(e => alert("Fout: " + e.message));
         });
 
         stopBtn.addEventListener('click', () => {
-            // 1. Stop GPS tracking
-            if (watchId !== null) {
-                navigator.geolocation.clearWatch(watchId);
-                watchId = null;
-            }
-
-            // 2. Stop en reset Audio
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+            if (volumeInterval) clearInterval(volumeInterval);
+            
             audio.pause();
             audio.currentTime = 0;
+            targetVolume = 0;
             audio.volume = 0;
 
-            // 3. Reset UI
             startBtn.disabled = false;
             startBtn.style.display = 'block';
             stopBtn.style.display = 'none';
-            
             statusDisplay.innerText = "Systeem Uitgezet";
-            statusDisplay.style.color = "#666";
-            distanceDisplay.innerHTML = `-- <span class="unit">m</span>`;
-            volPercent.innerText = "0%";
-            volFill.style.width = "0%";
-            posDisplay.innerText = "--, --";
         });
 
         function initGPS() {
-            if (!navigator.geolocation) return alert("Geen GPS ondersteuning.");
-
             watchId = navigator.geolocation.watchPosition(pos => {
                 const uLat = pos.coords.latitude;
                 const uLon = pos.coords.longitude;
@@ -142,32 +153,28 @@
                 distanceDisplay.innerHTML = `${Math.round(d)} <span class="unit">m</span>`;
 
                 if (d <= MAX_DIST) {
-                    if (audio.paused) audio.play().catch(console.error);
+                    if (audio.paused) audio.play();
 
-                    let v = 1 - (d / MAX_DIST);
-                    v = Math.max(0, Math.min(1, v));
+                    // Verbeterde berekening: we gebruiken een kwadraat voor een zachtere opkomst
+                    // Afstand 50m -> targetVolume 0
+                    // Afstand 25m -> targetVolume 0.25 (ipv 0.5)
+                    // Afstand 0m  -> targetVolume 1.0
+                    let rawPct = 1 - (d / MAX_DIST);
+                    targetVolume = Math.pow(rawPct, 2); 
                     
-                    audio.volume = v;
-                    volPercent.innerText = `${Math.round(v * 100)}%`;
-                    volFill.style.width = `${v * 100}%`;
-                    
-                    statusDisplay.innerText = "Binnen zone - Audio aan";
+                    statusDisplay.innerText = "Binnen zone";
                     statusDisplay.style.color = "#00ff00";
                 } else {
-                    audio.volume = 0;
-                    if (!audio.paused) audio.pause();
-                    
-                    volPercent.innerText = "0%";
-                    volFill.style.width = "0%";
-                    statusDisplay.innerText = "Buiten zone - Standby";
+                    targetVolume = 0;
+                    if (audio.volume === 0 && !audio.paused) audio.pause();
+                    statusDisplay.innerText = "Buiten zone";
                     statusDisplay.style.color = "#ff4444";
                 }
             }, err => {
                 statusDisplay.innerText = "GPS Error: " + err.message;
             }, {
                 enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 10000
+                maximumAge: 0
             });
         }
 
