@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Audio Debugger</title>
+    <title>GPS Audio Debugger - Ruimtetijd</title>
     <style>
         body { 
             font-family: -apple-system, system-ui, sans-serif; 
@@ -19,10 +19,11 @@
         #distance { font-size: 4rem; font-weight: 800; margin: 10px 0; color: #007bff; }
         .unit { font-size: 1.5rem; color: #888; }
         #startBtn { 
-            background: #007bff; color: white; border: none; padding: 15px 30px; 
+            background: #007bff; color: white; border: none; padding: 18px 30px; 
             border-radius: 50px; font-size: 1.1rem; font-weight: bold; cursor: pointer;
-            width: 100%; margin-bottom: 20px;
+            width: 100%; margin-bottom: 20px; transition: 0.2s;
         }
+        #startBtn:active { transform: scale(0.98); background: #0056b3; }
         #startBtn:disabled { background: #333; color: #666; cursor: not-allowed; }
         .stat-row { 
             display: flex; justify-content: space-between; 
@@ -31,10 +32,10 @@
         .label { color: #aaa; font-size: 0.9rem; }
         .value { font-weight: bold; font-family: monospace; }
         #volBar { 
-            width: 100%; height: 10px; background: #333; 
-            border-radius: 5px; margin-top: 5px; overflow: hidden;
+            width: 100%; height: 12px; background: #333; 
+            border-radius: 6px; margin-top: 8px; overflow: hidden;
         }
-        #volFill { height: 100%; width: 0%; background: #00ff00; transition: width 0.2s; }
+        #volFill { height: 100%; width: 0%; background: #00ff00; transition: width 0.3s ease; }
     </style>
 </head>
 <body>
@@ -42,17 +43,17 @@
     <div class="debug-panel">
         <button id="startBtn">START GPS & AUDIO</button>
 
-        <div class="label">AFSTAND TOT DOEL</div>
+        <div class="label">AFSTAND TOT PARKEERTERREIN</div>
         <div id="distance">-- <span class="unit">m</span></div>
 
         <div class="stat-row">
-            <span class="label">Status:</span>
+            <span class="label">Systeem Status:</span>
             <span id="status" class="value">Inactief</span>
         </div>
 
         <div class="stat-row" style="flex-direction: column; align-items: flex-start;">
             <div style="display:flex; justify-content:space-between; width:100%">
-                <span class="label">Volume:</span>
+                <span class="label">Volume Output:</span>
                 <span id="volPercent" class="value">0%</span>
             </div>
             <div id="volBar"><div id="volFill"></div></div>
@@ -76,17 +77,21 @@
         const posDisplay = document.getElementById('currentPos');
 
         // --- CONFIGURATIE ---
-        const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; // Parkeerterrein Ruimtetijd
-        const MAX_DIST = 50; // De straal in meters
+        const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; 
+        const MAX_DIST = 50; 
 
         startBtn.addEventListener('click', () => {
+            // "Unlock" de audio door even te spelen en direct te pauzeren
             audio.play().then(() => {
+                audio.pause();
                 audio.volume = 0;
+                audio.currentTime = 0;
+                
                 startBtn.disabled = true;
-                startBtn.innerText = "Systeem Draait...";
-                statusDisplay.innerText = "Zoeken naar satellieten...";
+                startBtn.innerText = "Systeem Actief";
+                statusDisplay.innerText = "GPS Zoeken...";
                 initGPS();
-            }).catch(e => alert("Fout: Klik op de pagina om audio te activeren."));
+            }).catch(e => alert("Toestemming geweigerd: " + e.message));
         });
 
         function initGPS() {
@@ -95,39 +100,51 @@
             navigator.geolocation.watchPosition(pos => {
                 const uLat = pos.coords.latitude;
                 const uLon = pos.coords.longitude;
-                
-                posDisplay.innerText = `${uLat.toFixed(4)}, ${uLon.toFixed(4)}`;
+                posDisplay.innerText = `${uLat.toFixed(5)}, ${uLon.toFixed(5)}`;
 
                 const d = getDistance(uLat, uLon, TARGET.lat, TARGET.lon);
                 distanceDisplay.innerHTML = `${Math.round(d)} <span class="unit">m</span>`;
 
                 if (d <= MAX_DIST) {
-                    // Volume logica (lineair 50m -> 0m)
+                    // Start audio als deze nog gepauzeerd was
+                    if (audio.paused) {
+                        audio.play().catch(console.error);
+                    }
+
+                    // Volume: Lineair van 0 (bij 50m) naar 1 (bij 0m)
                     let v = 1 - (d / MAX_DIST);
                     v = Math.max(0, Math.min(1, v));
-                    audio.volume = v;
                     
+                    audio.volume = v;
                     volPercent.innerText = `${Math.round(v * 100)}%`;
                     volFill.style.width = `${v * 100}%`;
-                    statusDisplay.innerText = "Binnen bereik!";
+                    
+                    statusDisplay.innerText = "Binnen zone - Audio aan";
                     statusDisplay.style.color = "#00ff00";
                 } else {
+                    // Buiten de 50m: Audio stilzetten en pauzeren
                     audio.volume = 0;
+                    if (!audio.paused) {
+                        audio.pause();
+                    }
+                    
                     volPercent.innerText = "0%";
                     volFill.style.width = "0%";
-                    statusDisplay.innerText = "Buiten 50m zone";
+                    statusDisplay.innerText = "Buiten zone - Gepauzeerd";
                     statusDisplay.style.color = "#ff4444";
                 }
             }, err => {
-                statusDisplay.innerText = "GPS Fout: " + err.message;
+                statusDisplay.innerText = "GPS Error: " + err.message;
+                statusDisplay.style.color = "yellow";
             }, {
                 enableHighAccuracy: true,
-                maximumAge: 0
+                maximumAge: 0,
+                timeout: 10000
             });
         }
 
         function getDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3;
+            const R = 6371e3; // Straal van de aarde in meters
             const p1 = lat1 * Math.PI/180;
             const p2 = lat2 * Math.PI/180;
             const dp = (lat2-lat1) * Math.PI/180;
