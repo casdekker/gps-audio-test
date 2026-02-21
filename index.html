@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS Audio Debugger</title>
+    <style>
+        body { 
+            font-family: -apple-system, system-ui, sans-serif; 
+            background-color: #121212; color: white; 
+            display: flex; flex-direction: column; align-items: center; 
+            justify-content: center; min-height: 100vh; margin: 0; 
+        }
+        .debug-panel { 
+            background: #1e1e1e; padding: 25px; border-radius: 20px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 85%; max-width: 400px;
+            text-align: center; border: 1px solid #333;
+        }
+        #distance { font-size: 4rem; font-weight: 800; margin: 10px 0; color: #007bff; }
+        .unit { font-size: 1.5rem; color: #888; }
+        #startBtn { 
+            background: #007bff; color: white; border: none; padding: 15px 30px; 
+            border-radius: 50px; font-size: 1.1rem; font-weight: bold; cursor: pointer;
+            width: 100%; margin-bottom: 20px;
+        }
+        #startBtn:disabled { background: #333; color: #666; cursor: not-allowed; }
+        .stat-row { 
+            display: flex; justify-content: space-between; 
+            margin: 10px 0; padding: 10px; background: #2a2a2a; border-radius: 10px;
+        }
+        .label { color: #aaa; font-size: 0.9rem; }
+        .value { font-weight: bold; font-family: monospace; }
+        #volBar { 
+            width: 100%; height: 10px; background: #333; 
+            border-radius: 5px; margin-top: 5px; overflow: hidden;
+        }
+        #volFill { height: 100%; width: 0%; background: #00ff00; transition: width 0.2s; }
+    </style>
+</head>
+<body>
+
+    <div class="debug-panel">
+        <button id="startBtn">START GPS & AUDIO</button>
+
+        <div class="label">AFSTAND TOT DOEL</div>
+        <div id="distance">-- <span class="unit">m</span></div>
+
+        <div class="stat-row">
+            <span class="label">Status:</span>
+            <span id="status" class="value">Inactief</span>
+        </div>
+
+        <div class="stat-row" style="flex-direction: column; align-items: flex-start;">
+            <div style="display:flex; justify-content:space-between; width:100%">
+                <span class="label">Volume:</span>
+                <span id="volPercent" class="value">0%</span>
+            </div>
+            <div id="volBar"><div id="volFill"></div></div>
+        </div>
+
+        <div class="stat-row">
+            <span class="label">Jouw GPS:</span>
+            <span id="currentPos" class="value">--, --</span>
+        </div>
+    </div>
+
+    <audio id="myAudio" src="audio.mp3" loop crossorigin="anonymous"></audio>
+
+    <script>
+        const audio = document.getElementById('myAudio');
+        const startBtn = document.getElementById('startBtn');
+        const distanceDisplay = document.getElementById('distance');
+        const statusDisplay = document.getElementById('status');
+        const volPercent = document.getElementById('volPercent');
+        const volFill = document.getElementById('volFill');
+        const posDisplay = document.getElementById('currentPos');
+
+        // --- CONFIGURATIE ---
+        const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; // Verander naar jouw testpunt
+        const MAX_DIST = 50; // De straal in meters
+
+        startBtn.addEventListener('click', () => {
+            audio.play().then(() => {
+                audio.volume = 0;
+                startBtn.disabled = true;
+                startBtn.innerText = "Systeem Draait...";
+                statusDisplay.innerText = "Zoeken naar satellieten...";
+                initGPS();
+            }).catch(e => alert("Fout: Klik op de pagina om audio te activeren."));
+        });
+
+        function initGPS() {
+            if (!navigator.geolocation) return alert("Geen GPS ondersteuning.");
+
+            navigator.geolocation.watchPosition(pos => {
+                const uLat = pos.coords.latitude;
+                const uLon = pos.coords.longitude;
+                
+                posDisplay.innerText = `${uLat.toFixed(4)}, ${uLon.toFixed(4)}`;
+
+                const d = getDistance(uLat, uLon, TARGET.lat, TARGET.lon);
+                distanceDisplay.innerHTML = `${Math.round(d)} <span class="unit">m</span>`;
+
+                if (d <= MAX_DIST) {
+                    // Volume logica (lineair 50m -> 0m)
+                    let v = 1 - (d / MAX_DIST);
+                    v = Math.max(0, Math.min(1, v));
+                    audio.volume = v;
+                    
+                    volPercent.innerText = `${Math.round(v * 100)}%`;
+                    volFill.style.width = `${v * 100}%`;
+                    statusDisplay.innerText = "Binnen bereik!";
+                    statusDisplay.style.color = "#00ff00";
+                } else {
+                    audio.volume = 0;
+                    volPercent.innerText = "0%";
+                    volFill.style.width = "0%";
+                    statusDisplay.innerText = "Buiten 50m zone";
+                    statusDisplay.style.color = "#ff4444";
+                }
+            }, err => {
+                statusDisplay.innerText = "GPS Fout: " + err.message;
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0
+            });
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const p1 = lat1 * Math.PI/180;
+            const p2 = lat2 * Math.PI/180;
+            const dp = (lat2-lat1) * Math.PI/180;
+            const dl = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+    </script>
+</body>
+</html>
