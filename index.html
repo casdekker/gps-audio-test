@@ -3,76 +3,51 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GPS Audio - Ruimtetijd</title>
+    <title>GPS Audio - Fix</title>
     <style>
-        body { 
-            font-family: -apple-system, system-ui, sans-serif; 
-            background-color: #121212; color: white; 
-            display: flex; flex-direction: column; align-items: center; 
-            justify-content: center; min-height: 100vh; margin: 0; 
-        }
-        .debug-panel { 
-            background: #1e1e1e; padding: 25px; border-radius: 20px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5); width: 85%; max-width: 400px;
-            text-align: center; border: 1px solid #333;
-        }
-        #distance { font-size: 4rem; font-weight: 800; margin: 10px 0; color: #007bff; }
-        .unit { font-size: 1.5rem; color: #888; }
-        
+        body { font-family: sans-serif; background: #121212; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .debug-panel { background: #1e1e1e; padding: 25px; border-radius: 20px; width: 85%; max-width: 400px; text-align: center; border: 1px solid #333; }
+        #distance { font-size: 3.5rem; font-weight: 800; margin: 10px 0; color: #007bff; }
         .btn-group { display: flex; gap: 10px; margin-bottom: 20px; }
-        
-        button { 
-            flex: 1; padding: 15px; border-radius: 50px; border: none; 
-            font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s;
-        }
-        
+        button { flex: 1; padding: 15px; border-radius: 50px; border: none; font-size: 1rem; font-weight: bold; cursor: pointer; }
         #startBtn { background: #007bff; color: white; }
-        #startBtn:disabled { background: #333; color: #666; }
-        
-        #stopBtn { background: #ff4444; color: white; display: none; } /* Verstop tot start */
-        
-        .stat-row { 
-            display: flex; justify-content: space-between; 
-            margin: 10px 0; padding: 10px; background: #2a2a2a; border-radius: 10px;
-        }
-        .label { color: #aaa; font-size: 0.8rem; text-transform: uppercase; }
-        .value { font-weight: bold; font-family: monospace; }
-        
+        #stopBtn { background: #ff4444; color: white; display: none; }
+        .stat-row { display: flex; justify-content: space-between; margin: 10px 0; padding: 10px; background: #2a2a2a; border-radius: 10px; font-size: 0.9rem; }
         #volBar { width: 100%; height: 12px; background: #333; border-radius: 6px; margin-top: 8px; overflow: hidden; }
-        #volFill { height: 100%; width: 0%; background: #00ff00; transition: width 0.3s ease; }
+        #volFill { height: 100%; width: 0%; background: #00ff00; transition: width 0.3s; }
     </style>
 </head>
 <body>
 
     <div class="debug-panel">
         <div class="btn-group">
-            <button id="startBtn">START GPS</button>
-            <button id="stopBtn">STOP</button>
+            <button id="startBtn">START SYSTEEM</button>
+            <button id="stopBtn">STOP SYSTEEM</button>
         </div>
 
-        <div class="label">Afstand tot doel</div>
-        <div id="distance">-- <span class="unit">m</span></div>
+        <div style="color: #888; font-size: 0.8rem;">AFSTAND</div>
+        <div id="distance">-- m</div>
 
         <div class="stat-row">
-            <span class="label">Status:</span>
-            <span id="status" class="value" style="color: #666;">Inactief</span>
+            <span>Status:</span>
+            <span id="status" style="color: #666;">Inactief</span>
         </div>
 
         <div class="stat-row" style="flex-direction: column; align-items: flex-start;">
             <div style="display:flex; justify-content:space-between; width:100%">
-                <span class="label">Volume:</span>
-                <span id="volPercent" class="value">0%</span>
+                <span>Volume:</span>
+                <span id="volPercent">0%</span>
             </div>
             <div id="volBar"><div id="volFill"></div></div>
         </div>
 
         <div class="stat-row">
-            <span class="label">Jouw GPS:</span>
-            <span id="currentPos" class="value">--, --</span>
+            <span>GPS:</span>
+            <span id="currentPos">--, --</span>
         </div>
     </div>
 
-    <audio id="myAudio" src="audio.mp3" loop crossorigin="anonymous"></audio>
+    <audio id="myAudio" loop crossorigin="anonymous"></audio>
 
     <script>
         const audio = document.getElementById('myAudio');
@@ -91,87 +66,81 @@
         const TARGET = { lat: 52.39171696913701, lon: 4.67880535164704 }; 
         const MAX_DIST = 50; 
 
-        // Deze functie zorgt dat het volume vloeiend verandert (fade)
         function smoothVolume() {
-            const step = 0.05; // Snelheid van de fade
-            if (Math.abs(audio.volume - targetVolume) > step) {
-                if (audio.volume < targetVolume) {
-                    audio.volume = Math.min(1, audio.volume + step);
-                } else {
-                    audio.volume = Math.max(0, audio.volume - step);
-                }
-            } else {
-                audio.volume = targetVolume;
+            const step = 0.05;
+            // Pas volume aan richting target
+            if (audio.volume < targetVolume) {
+                audio.volume = Math.min(targetVolume, audio.volume + step);
+            } else if (audio.volume > targetVolume) {
+                audio.volume = Math.max(targetVolume, audio.volume - step);
             }
             
-            // UI Update
-            const displayVol = Math.round(audio.volume * 100);
-            volPercent.innerText = `${displayVol}%`;
-            volFill.style.width = `${displayVol}%`;
+            // Update UI
+            const v = Math.round(audio.volume * 100);
+            volPercent.innerText = v + "%";
+            volFill.style.width = v + "%";
+
+            // Pauzeer als volume 0 is om CPU te sparen
+            if (audio.volume === 0 && targetVolume === 0 && !audio.paused) {
+                audio.pause();
+            }
         }
 
         startBtn.addEventListener('click', () => {
+            // 1. Setup audio direct bij klik
+            audio.src = "audio.mp3"; // Nu pas laden
+            audio.volume = 0;
+            audio.muted = false;
+
             audio.play().then(() => {
-                audio.pause();
-                audio.volume = 0;
+                // Direct pauzeren tot we GPS bevestiging hebben
+                audio.pause(); 
                 
-                startBtn.disabled = true;
                 startBtn.style.display = 'none';
                 stopBtn.style.display = 'block';
+                statusDisplay.innerText = "GPS zoeken...";
                 
-                statusDisplay.innerText = "GPS Zoeken...";
-                
-                // Start de volume smoother (loopt elke 100ms)
                 volumeInterval = setInterval(smoothVolume, 100);
-                
                 initGPS();
-            }).catch(e => alert("Fout: " + e.message));
+            }).catch(err => alert("Audio error: " + err.message));
         });
 
         stopBtn.addEventListener('click', () => {
             if (watchId !== null) navigator.geolocation.clearWatch(watchId);
             if (volumeInterval) clearInterval(volumeInterval);
-            
             audio.pause();
-            audio.currentTime = 0;
+            audio.src = ""; // Forceer stop
             targetVolume = 0;
-            audio.volume = 0;
-
-            startBtn.disabled = false;
-            startBtn.style.display = 'block';
-            stopBtn.style.display = 'none';
-            statusDisplay.innerText = "Systeem Uitgezet";
+            location.reload(); // Schoonste manier om alles te resetten
         });
 
         function initGPS() {
             watchId = navigator.geolocation.watchPosition(pos => {
                 const uLat = pos.coords.latitude;
                 const uLon = pos.coords.longitude;
-                posDisplay.innerText = `${uLat.toFixed(5)}, ${uLon.toFixed(5)}`;
+                posDisplay.innerText = uLat.toFixed(5) + ", " + uLon.toFixed(5);
 
                 const d = getDistance(uLat, uLon, TARGET.lat, TARGET.lon);
-                distanceDisplay.innerHTML = `${Math.round(d)} <span class="unit">m</span>`;
+                distanceDisplay.innerHTML = Math.round(d) + " m";
 
                 if (d <= MAX_DIST) {
-                    if (audio.paused) audio.play();
-
-                    // Verbeterde berekening: we gebruiken een kwadraat voor een zachtere opkomst
-                    // Afstand 50m -> targetVolume 0
-                    // Afstand 25m -> targetVolume 0.25 (ipv 0.5)
-                    // Afstand 0m  -> targetVolume 1.0
+                    // We zijn binnen de zone
                     let rawPct = 1 - (d / MAX_DIST);
                     targetVolume = Math.pow(rawPct, 2); 
                     
+                    if (audio.paused && targetVolume > 0) {
+                        audio.play();
+                    }
                     statusDisplay.innerText = "Binnen zone";
                     statusDisplay.style.color = "#00ff00";
                 } else {
+                    // Buiten de zone
                     targetVolume = 0;
-                    if (audio.volume === 0 && !audio.paused) audio.pause();
                     statusDisplay.innerText = "Buiten zone";
                     statusDisplay.style.color = "#ff4444";
                 }
             }, err => {
-                statusDisplay.innerText = "GPS Error: " + err.message;
+                statusDisplay.innerText = "GPS Fout: " + err.code;
             }, {
                 enableHighAccuracy: true,
                 maximumAge: 0
